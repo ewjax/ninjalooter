@@ -809,8 +809,12 @@ class WhoLog(DictEquals):
         self.raidtick = raidtick
         self.tick_name = tick_name
 
-    def eqtime(self) -> str:
-        return self.time.strftime("%a %b %d %H:%M:%S %Y")
+    def eqtime(self, allow_eastern=False) -> str:
+        # import at runtime rather than on load to avoid circular error
+        # pylint: disable=import-outside-toplevel
+        from ninjalooter import utils
+        return utils.datetime_to_eq_format(
+            self.time, allow_eastern=allow_eastern)
 
     def raidtick_display(self):
         return "✔️" if self.raidtick else ""  # or "❌"?
@@ -929,7 +933,7 @@ class Auction(DictEquals):
             self._alert_timer.start()
 
     def _do_alert(self):
-        # import utils at runtime rather than on load to avoid circular error
+        # import at runtime rather than on load to avoid circular error
         # pylint: disable=import-outside-toplevel
         from ninjalooter import utils
         utils.alert_message(
@@ -1096,6 +1100,16 @@ class DKPAuction(Auction):
                     min=self.get_target_min(), classes=classes,
                     time_remaining=self.time_remaining_text(),
                 )
+        if config.PRIMARY_BID_CHANNEL == "unset":
+            # import at runtime rather than on load to avoid circular error
+            # pylint: disable=import-outside-toplevel
+            from ninjalooter import utils
+            utils.alert_message(
+                "Default Bid Channel Unset",
+                "You don't have a default bidding channel set. Please set a "
+                "default bidding channel (to the right of the Active Auctions "
+                "section of the Bidding tab).",
+                msec=5000)
         return bid_message
 
     def win_text(self) -> str:

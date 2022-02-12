@@ -5,9 +5,10 @@ import os
 import pathlib
 import re
 
-VERSION = "1.14-rc10"
+VERSION = "1.14.5"
 
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
+NEEDS_WRITE = False
 CONFIG_FILENAME = 'ninjalooter.ini'
 CONF = configparser.ConfigParser()
 CONF.read(CONFIG_FILENAME)
@@ -74,12 +75,15 @@ ALWAYS_ON_TOP = CONF.getboolean("default", "always_on_top", fallback=False)
 SHOW_RAIDTICK_ONLY = CONF.getboolean("default", "raidtick_filter",
                                      fallback=False)
 HIDE_ROTS = CONF.getboolean("default", "hide_rots", fallback=False)
-DROP_COOLDOWN = CONF.getint("default", "drop_cooldown", fallback=120)
+DROP_COOLDOWN = CONF.getint("default", "drop_cooldown", fallback=60)
 BACKUP_ON_CLEAR = CONF.getboolean("default", "backup_on_clear", fallback=True)
 AUTO_SWAP_LOGFILE = CONF.getboolean("default", "auto_swap_logfile",
                                     fallback=True)
 ALLOW_EXCEL_EXPORT = CONF.getboolean("default", "allow_excel_export",
                                      fallback=False)
+EXPORT_TIME_IN_EASTERN = CONF.getboolean("default", "export_time_in_eastern",
+                                         fallback=False)
+LAST_RUN_VERSION = CONF.get("default", "last_run_version", fallback=None)
 
 if not CONF.has_section("min_dkp"):
     CONF.add_section("min_dkp")
@@ -101,7 +105,7 @@ if not CONF.has_section("theme"):
     CONF.set("theme", "safe_color", SAFE_COLOR)
     CONF.set("theme", "warn_color", WARN_COLOR)
     CONF.set("theme", "danger_color", DANGER_COLOR)
-    write()
+    NEEDS_WRITE = True
 
 # Alerts
 AUDIO_ALERTS = CONF.getboolean("alerts", "audio_enabled", fallback=True)
@@ -114,7 +118,7 @@ if not CONF.has_section("alerts"):
     CONF.add_section("alerts")
     CONF.set("alerts", "audio_enabled", str(AUDIO_ALERTS))
     CONF.set("alerts", "text_enabled", str(TEXT_ALERTS))
-    write()
+    NEEDS_WRITE = True
 
 NEW_DROP_SOUND = CONF.get(
     "alerts", "new_drop",
@@ -272,3 +276,6 @@ MATCH_BID = [BID_CHANNEL_OPTIONS[chan.strip().lower()]
              if chan.strip().lower() in BID_CHANNEL_OPTIONS]
 PRIMARY_BID_CHANNEL = CONF.get("default", "primary_bid_channel",
                                fallback="unset")
+
+if NEEDS_WRITE:
+    write()

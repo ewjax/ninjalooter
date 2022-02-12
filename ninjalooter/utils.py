@@ -14,6 +14,7 @@ from ahocorapy import keywordtree
 import dateutil.parser
 import playsound
 import pyperclip
+import pytz
 import requests
 import xlsxwriter
 import xlsxwriter.exceptions
@@ -149,7 +150,14 @@ def get_latest_logfile(logdir: str) -> tuple:
 def load_item_data():
     with open(os.path.join(config.PROJECT_DIR,
                            'data', 'items.json')) as item_file:
-        return json.load(item_file)
+        items = json.load(item_file)
+    backtick_items = {item: link for item, link in items.items()
+                      if "`" in item}
+    for item, link in backtick_items.items():
+        fixed_item_name = item.replace("`", "'")
+        if fixed_item_name not in items:
+            items[item.replace("`", "'")] = link
+    return items
 
 
 def load_spell_data():
@@ -171,6 +179,10 @@ def setup_aho():
 
 def open_wiki_url(item: models.ItemDrop) -> None:
     url = config.BASE_WIKI_URL + config.ITEMS[item.name.upper()]
+    webbrowser.open(url)
+
+
+def open_generic_url(url: str) -> None:
     webbrowser.open(url)
 
 
@@ -259,8 +271,19 @@ def get_active_item_names() -> list:
     return active_items
 
 
-def datetime_to_eq_format(some_datetime: datetime.datetime) -> str:
+def datetime_to_eq_format(
+        some_datetime: datetime.datetime, allow_eastern: bool = True) -> str:
+    if config.EXPORT_TIME_IN_EASTERN and allow_eastern:
+        some_datetime = some_datetime + eastern_time_offset()
     return some_datetime.strftime("%a %b %d %H:%M:%S %Y")
+
+
+def datetime_from_eq_format(
+        some_datetime: str, allow_eastern: bool = True) -> datetime.datetime:
+    dt = dateutil.parser.parse(some_datetime)
+    if config.EXPORT_TIME_IN_EASTERN and allow_eastern:
+        dt = dt + eastern_time_offset()
+    return dt
 
 
 def find_timestamp(lines: list, timestamp: datetime.datetime) -> (int, None):
@@ -322,7 +345,8 @@ def find_timestamp(lines: list, timestamp: datetime.datetime) -> (int, None):
 def get_timestamp(logline: str) -> datetime.datetime:
     match = RE_TIMESTAMP.match(logline)
     if match:
-        return dateutil.parser.parse(match.group("time"))
+        return datetime_from_eq_format(
+            match.group("time"), allow_eastern=False)
     return None
 
 
@@ -398,9 +422,16 @@ def store_state(backup=False):
         json.dump(json_state, ssfp, cls=JSONEncoder)
 
 
+def eastern_time_offset():
+    now = datetime.datetime.utcnow()
+    here = now.astimezone().utcoffset()
+    eastern = now.astimezone(pytz.timezone("US/Eastern")).utcoffset()
+    seconds = (eastern - here).seconds
+    return datetime.timedelta(seconds=seconds)
+
+
 def export_to_excel(filename):
-    LOG.warning("Export to filename %s: NOT IMPLEMENTED",
-                filename)
+    LOG.info("Exporting to Excel file: %s", filename)
 
     # Completed Auctions
     excel_data = {
@@ -413,7 +444,7 @@ def export_to_excel(filename):
     for auc in config.HISTORICAL_AUCTIONS.values():
         dkp_auc = isinstance(auc, models.DKPAuction)
         auc_data = {
-            'time': dateutil.parser.parse(auc.item.timestamp),
+            'time': datetime_from_eq_format(auc.item.timestamp),
             'item': auc.name(),
             'winner': auc.highest_players(),
             'type': 'DKP' if dkp_auc else 'Random',
@@ -424,7 +455,7 @@ def export_to_excel(filename):
     # Prepare Kill Times
     for killtime in config.KILL_TIMERS:
         killtime_data = {
-            'time': dateutil.parser.parse(killtime.time),
+            'time': datetime_from_eq_format(killtime.time),
             'mob': killtime.name,
             'island': killtime.island(),
         }
@@ -432,11 +463,25 @@ def export_to_excel(filename):
 
     # Get all raw creditt/gratss messages
     for creditt in config.CREDITT_LOG:
-        creditt_data = {'creditt/gratss': creditt.raw_message}
+        adjusted_message = creditt.raw_message
+        if config.EXPORT_TIME_IN_EASTERN:
+            m = config.MATCH_CREDITT.match(adjusted_message)
+            time_part = m.groupdict()['time']
+            new_time = datetime_to_eq_format(
+                datetime_from_eq_format(time_part, allow_eastern=False))
+            adjusted_message = adjusted_message.replace(time_part, new_time)
+        creditt_data = {'creditt/gratss': adjusted_message}
         excel_data['Creditt & Gratss'].append(creditt_data)
     # Get all raw creditt/gratss messages
     for gratss in config.GRATSS_LOG:
-        gratss_data = {'creditt/gratss': gratss.raw_message}
+        adjusted_message = gratss.raw_message
+        if config.EXPORT_TIME_IN_EASTERN:
+            m = config.MATCH_GRATSS.match(adjusted_message)
+            time_part = m.groupdict()['time']
+            new_time = datetime_to_eq_format(
+                datetime_from_eq_format(time_part, allow_eastern=False))
+            adjusted_message = adjusted_message.replace(time_part, new_time)
+        gratss_data = {'creditt/gratss': adjusted_message}
         excel_data['Creditt & Gratss'].append(gratss_data)
 
     # Set up the workbook
@@ -449,7 +494,9 @@ def export_to_excel(filename):
         if data:
             worksheet = workbook.add_worksheet(page)
             worksheet.write_row(0, 0, data[0].keys(), bold)
-            worksheet.set_column(0, 1, 22)
+            worksheet.set_column(0, 0, 22)
+            worksheet.set_column(1, 1, 30)
+            worksheet.set_column(2, 2, 16)
             row_num = 1
             for row in data:
                 worksheet.write_row(row_num, 0, row.values())
@@ -459,7 +506,12 @@ def export_to_excel(filename):
     # Write Attendance Logs
     for entry in config.ATTENDANCE_LOGS:
         if entry.log:
-            time_str = entry.time.strftime('%Y.%m.%d %I.%M.%S %p')
+            if config.EXPORT_TIME_IN_EASTERN:
+                time_str = (
+                        entry.time + eastern_time_offset()
+                ).strftime('%Y.%m.%d %I.%M.%S %p')
+            else:
+                time_str = entry.time.strftime('%Y.%m.%d %I.%M.%S %p')
             worksheet_name = time_str
             worksheet_name_append = 0
             attendance_sheet = None
@@ -474,13 +526,21 @@ def export_to_excel(filename):
                 except Exception:
                     return False
 
-            attendance_sheet.write_row(0, 0, ('name', 'guild'), bold)
-            attendance_sheet.set_column(0, 1, 18)
+            attendance_sheet.write_row(
+                0, 0, ('name', 'level', 'class', 'guild'), bold)
+            attendance_sheet.set_column(0, 0, 18)
+            attendance_sheet.set_column(1, 1, 8)
+            attendance_sheet.set_column(2, 3, 18)
             row_num = 1
-            for name, guild in entry.log.items():
-                attendance_sheet.write_row(row_num, 0, (name, guild))
+            for name, player_obj in entry.log.items():
+                attendance_sheet.write_row(
+                    row_num, 0,
+                    (name,
+                     player_obj.level if player_obj.level != 0 else "",
+                     player_obj.pclass,
+                     player_obj.guild))
                 row_num += 1
-            attendance_sheet.autofilter(0, 0, row_num - 1, 1)
+            attendance_sheet.autofilter(0, 0, row_num - 1, 3)
 
     # Save the workbook
     try:
@@ -491,40 +551,71 @@ def export_to_excel(filename):
 
 
 def export_to_eqdkp(filename):
+    LOG.info("Exporting to EQDKP file: %s", filename)
+
     # Recreate /who lines for each recorded raidtick
     raidtick_logs = []
     for wholog in config.ATTENDANCE_LOGS:
         if wholog.raidtick:
-            tick_time = wholog.eqtime()
+            tick_time = wholog.eqtime(allow_eastern=True)
             tick_lines = []
             for member, player_obj in wholog.log.items():
                 guild = player_obj.guild
                 if config.RESTRICT_BIDS and guild not in \
                         config.ALLIANCES[config.DEFAULT_ALLIANCE]:
                     continue
+                level_class = None
+                if player_obj.level:
+                    level_class = f"{player_obj.level} {player_obj.pclass}"
                 tick_line = f"[{tick_time}] [ANONYMOUS] {member} <{guild}>"
+                if level_class:
+                    tick_line += " {%s}" % level_class
                 tick_lines.append(tick_line)
             if tick_lines:
                 raidtick_logs.append((wholog.tick_name, tick_lines))
 
     # Get all raw creditt/gratss messages
-    creditt_messages = [x.raw_message for x in config.CREDITT_LOG]
-    gratss_messages = [x.raw_message for x in config.GRATSS_LOG]
+    creditt_messages = []
+    for message in config.CREDITT_LOG:
+        adjusted_message = message.raw_message
+        if config.EXPORT_TIME_IN_EASTERN:
+            m = config.MATCH_CREDITT.match(adjusted_message)
+            time_part = m.groupdict()['time']
+            new_time = datetime_to_eq_format(
+                datetime_from_eq_format(time_part, allow_eastern=False))
+            adjusted_message = adjusted_message.replace(time_part, new_time)
+        creditt_messages.append(adjusted_message)
+    gratss_messages = []
+    for message in config.GRATSS_LOG:
+        adjusted_message = message.raw_message
+        if config.EXPORT_TIME_IN_EASTERN:
+            m = config.MATCH_GRATSS.match(adjusted_message)
+            time_part = m.groupdict()['time']
+            new_time = datetime_to_eq_format(
+                datetime_from_eq_format(time_part, allow_eastern=False))
+            adjusted_message = adjusted_message.replace(time_part, new_time)
+        gratss_messages.append(adjusted_message)
 
     # Assemble all recorded loots into parsable format
     closed_loots = []
     for auction in config.HISTORICAL_AUCTIONS.values():
         highest = auction.highest()
+        if config.EXPORT_TIME_IN_EASTERN:
+            item_time = datetime_from_eq_format(
+                auction.item.timestamp, allow_eastern=False)
+            timestamp = datetime_to_eq_format(item_time)
+        else:
+            timestamp = auction.item.timestamp
         if highest and isinstance(auction, models.DKPAuction):
             winner, dkp = highest[0]
             closed_loots.append(
-                f"[{auction.item.timestamp}] You say, 'LOOT: "
+                f"[{timestamp}] You say, 'LOOT: "
                 f" {auction.item.name} {winner} {dkp}'"
             )
         elif highest:
             winner, _ = highest[0]
             closed_loots.append(
-                f"[{auction.item.timestamp}] You say, 'LOOT: "
+                f"[{timestamp}] You say, 'LOOT: "
                 f" {auction.item.name} {winner} 0'"
             )
 
@@ -544,7 +635,7 @@ def export_to_eqdkp(filename):
     # Create a page per raidtick
     for tick_name, tick in raidtick_logs:
         tick_timestamp = re.match(config.TIMESTAMP, tick[0]).group('time')
-        parsed_time = dateutil.parser.parse(tick_timestamp)
+        parsed_time = datetime_from_eq_format(tick_timestamp)
         if tick_name:
             sheet_name = tick_name
         else:
@@ -571,7 +662,7 @@ def export_to_eqdkp(filename):
         # Write creditts after each tick, working backwards
         for creditt in creditt_messages.copy():
             cred_timestamp = re.match(config.TIMESTAMP, creditt).group('time')
-            parsed_time = dateutil.parser.parse(cred_timestamp)
+            parsed_time = datetime_from_eq_format(cred_timestamp)
             if parsed_time > sheet_timestamp:
                 sheet_rows[sheet.name] += 1
                 sheet.write_string(sheet_rows[sheet.name], 0, creditt)
@@ -588,7 +679,7 @@ def export_to_eqdkp(filename):
         # Write loots to the current sheet
         for loot in closed_loots.copy():
             loot_timestamp = re.match(config.TIMESTAMP, loot).group('time')
-            parsed_time = dateutil.parser.parse(loot_timestamp)
+            parsed_time = datetime_from_eq_format(loot_timestamp)
             if sheet_timestamp == "Loot" or parsed_time < sheet_timestamp:
                 sheet_rows[sheet.name] += 1
                 sheet.write_string(sheet_rows[sheet.name], 0, loot)
@@ -662,7 +753,7 @@ def translate_sheet_csv_to_mindkp_json(csv_data):
                             config.MIN_DKP_DROP_COL, row)
             try:
                 if config.MIN_DKP_DROP_COL and row[config.MIN_DKP_DROP_COL]:
-                    item['nodrop'] = bool(distutils.util.strtobool(
+                    item['nodrop'] = not bool(distutils.util.strtobool(
                         row[config.MIN_DKP_DROP_COL]))
             except:  # noqa
                 LOG.warning("Couldn't parse column `%s` for row: %s",
