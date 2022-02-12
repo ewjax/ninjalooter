@@ -1,53 +1,83 @@
-Tank group (1-2)
- - War
- - War
- - Shaman w/ Torpor
- - Bard
- - Ench
- - Any
+Group Type Templates:
+
+    Tank group
+     - War
+     - War
+     - Shaman w/ Torpor
+     - Bard
+     - Ench
+     - Any
+
+    Cleric group
+     - Cleric
+     - Cleric
+     - Cleric
+     - Cleric
+     - Cleric
+     - Bard (or maybe necro)
+
+    Pull Group
+     - Monk at least 1
+     - Monk
+     - Monk
+     - Mage w/ COTH
+     - Wiz
+     - Priest
+
+    General
+     - Priest
+     - Tank
+     - Slower (Enc or Shm)
+     - 3x other
 
 
-Cleric group (1-2)
- - Cleric
- - Cleric
- - Cleric
- - Cleric
- - Cleric
- - Bard (or maybe necro)
+Group Types for Different Raid Sizes:
+
+    Any partial groups:
+     - General
+
+    1-3 groups:
+     - All General
+
+    4 groups:
+     - Tank, Cleric, Pull, General
+
+    5 groups:
+     - 2x Tank, Cleric, Pull, General
+
+    6 groups:
+     - 2x Tank, 2x Cleric, Pull, General
+
+    7+ groups:
+     - 2x Tank, 2x Cleric, Pull, the rest General
 
 
-Pull Group
- - Monk at least 1
- - Monk
- - Monk
- - Mage w/ COTH
- - Wiz
- - Priest
+Simulated Annealing Scoring System:
 
+    Goal = maximum raid score
+    General process:
+        - based on number of players, identify the desired group types
+        - execute the following pseudo-code:
+            while (not converged)
+                take the list of players and randomly assign them to group positions
+                determine the score of the randomized change, using the below criteria
+                if the score improves, keep the change
+                if the score doesn't improve, MAYBE keep the change anyway
+                    decision based on the system annealing "temperature"
+                    "hotter" = more likely to accept the move, "colder" = less likely
+                keep looping, slowly cooling off the system "temperature"
+                the system is converged when no new score improvements are found
 
-General
- - Priest
- - Tank
- - Slower (Enc or Shm)
- - 3x other
+    Scoring criteria for any given group:
+        MAX_SLOT = 100  # slot filled with an exact match
+        MIN_SLOT = 10  # slot filled with anyone
+        LEVEL_PENALTY = 15  # per level less than 60
+        CLASS_PENALTY = 50  # penalty if not an exact class match
+        GENERAL_PENALTY = 0.7  # penalize scores of players in general
 
-
-
-Any partial groups:
- - General
-
-1-3 groups:
- - All General
-
-4 groups:
- - General, Tank, Cleric, Pull
-
-5 groups:
- - General, Tank, Cleric, Pull, Tank
-
-6 groups:
- - General, Tank, Cleric, Pull, Tank, Cleric
-
-7+ groups:
- - General, Tank, Cleric, Pull, Tank, Cleric, (N-6) General
+    Example:  Assume we are trying to build a Tank group, and need a Warrior
+        A level 60 warrior would receive a score of 100
+        A level 58 warrior would receive a score of (100 - 2*15) = 70
+        A level 58 paladin would receive a score of (100 - 50 - 2*15) = 20
+        A level 60 enchanter would receive a score of 10
 
