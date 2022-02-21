@@ -6,7 +6,7 @@ min_bid_time = 150
 restrict_bids = False
 nodrop_only = True
 raidtick_filter = False
-alliances = Force of Will:Force of Will,Venerate,Black Lotus;Castle:Castle,Ancient Blood,Gathered Might;Kingdom:Kingdom,Karens of Karana;Seal Team:Seal Team
+alliances = Force of Will:Force of Will,Venerate,Black Lotus;Castle:Castle,Ancient Blood,Gathered Might,Freya's Chariot;Kingdom:Kingdom,Karens of Karana;Seal Team:Seal Team
 default_alliance = Force of Will
 hide_rots = False
 # If an item is linked more than once in drop_cooldown seconds, ignore it
@@ -52,6 +52,7 @@ text_enabled = True
 new_drop = data\sounds\new_drop.wav
 auction_expiring = data\sounds\auc_expiring.wav
 raidtick_reminder = data\sounds\raidtick_reminder.wav
+new_raidtick = data\sounds\new_raidtick.wav
 # alt_reminder_dkp =
 # second_main_reminder_dkp =
 

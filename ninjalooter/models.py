@@ -801,13 +801,15 @@ class WhoLog(DictEquals):
     log = None
     raidtick = False
     tick_name = None
+    zone = None
 
-    def __init__(self, time, log, raidtick=False, tick_name=None):
+    def __init__(self, time, log, raidtick=False, tick_name=None, zone=None):
         super().__init__()
         self.time = time
         self.log = log
         self.raidtick = raidtick
         self.tick_name = tick_name
+        self.zone = zone
 
     def eqtime(self, allow_eastern=False) -> str:
         # import at runtime rather than on load to avoid circular error
@@ -818,6 +820,14 @@ class WhoLog(DictEquals):
 
     def raidtick_display(self):
         return "✔️" if self.raidtick else ""  # or "❌"?
+
+    def alliance_count(self):
+        pops = {alliance: 0 for alliance in config.ALLIANCES}
+        for player in self.log.values():
+            alliance = config.ALLIANCE_MAP.get(player.guild)
+            if alliance:
+                pops[alliance] += 1
+        return pops[config.DEFAULT_ALLIANCE]
 
     def populations(self):
         pops = {alliance: 0 for alliance in config.ALLIANCES}
@@ -1180,7 +1190,7 @@ class RandomAuction(Auction):
         classes = ' ({})'.format(self.classes()) if self.classes() else ""
         try:
             bid_text = (
-                "/{channel} " + config.ROLL_MESSAGE
+                "/{channel} ~" + config.ROLL_MESSAGE
             ).format(
                 channel=config.PRIMARY_BID_CHANNEL.upper(),
                 item=self.item.name, target=self.number, classes=classes
